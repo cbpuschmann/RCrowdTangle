@@ -1,3 +1,6 @@
+require("jsonlite")
+require("dplyr")
+
 ct_get_links <- function(x = "", platforms = "", count = 100, startDate = "", endDate = "", token = "")
 {
   endpoint.links <- "https://api.crowdtangle.com/links"
