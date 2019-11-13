@@ -3,9 +3,8 @@ Type: Package
 Title: Retrieves Data From The CrowdTangle API
 Version: 0.1.0
 Author: Cornelius Puschmann
-Maintainer: Cornelius Puschmann <puschmann@gmail.com>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
+Maintainer: Cornelius Puschmann <puschmann@uni-bremen.de>
+Description: This package offers a programmatic interface to the CrowdTangle API, which gives users social media analytics from Facebook, Instagram and Twitter.
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
