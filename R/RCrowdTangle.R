@@ -13,7 +13,7 @@ ct_get_links <- function(x = "", platforms = "", count = 100, startDate = "", en
       posts <- response.json$result$posts
       if("expandedLinks" %in% colnames(posts)) posts <- select(posts, -expandedLinks)
       if("media" %in% colnames(posts)) posts <- select(posts, -media)
-      posts <- flatten(posts)
+      posts <- jsonlite::flatten(posts)
       return(posts)
     }
     else if (status == 429)
