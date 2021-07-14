@@ -1,4 +1,4 @@
-# ----- crowdtangleR.R -----
+# ----- RCrowdTangle.R -----
 #
 # Fork of cpbuschmann's RCrowdTangle library
 #
@@ -20,7 +20,7 @@ apiVersion <- "2021"
 # limited to 2 calls/minute. Every function waits for the appropriate time
 # beforte trying again. If not needed, just set to NULL. 
 
-set_api_limit <- function(calls = 6, links=FALSE) {
+ct_api_limit <- function(calls = 6, links=FALSE) {
   if (calls > 0) {
     if(links) {
       apiWaitLinks <<- 60/calls
@@ -31,8 +31,8 @@ set_api_limit <- function(calls = 6, links=FALSE) {
   }
 }
 
-set_api_limit(6)
-set_api_limit(2,links=TRUE)
+ct_api_limit(6)
+ct_api_limit(2,links=TRUE)
 
 # Global variable to store token from environment 
 ct_token <- NULL

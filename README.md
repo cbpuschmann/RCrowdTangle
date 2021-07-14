@@ -24,8 +24,8 @@ wait for a fraction of a second before returning.
 
 If you wish to change the rate limit to something lower, use
 
-- **set_api_limit(n)** 
-- **set_api_limit(n, links=TRUE)**
+- **ct_set_api_limit(n)** 
+- **ct_set_api_limit(n, links=TRUE)**
 
 to set the limit to n calls per minute.
 
