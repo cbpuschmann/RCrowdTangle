@@ -34,6 +34,23 @@ ct_api_limit <- function(calls = 6, links=FALSE) {
 ct_api_limit(6)
 ct_api_limit(2,links=TRUE)
 
+# Global variables for last access of API to determine wait
+apiWaitTill <- NULL
+
+# Helper functions
+
+# Call before accessing the API. 
+ct_wait <- function(t = apiWait) {
+  if (!is.null(apiWaitTill)) {
+    # If before wait point, wait. 
+    while(now() < apiWaitTill) {
+      Sys.sleep(1)
+    }
+  }
+  # Save new wait point
+  apiWaitTill <<- now()+t
+}
+
 # Global variable to store token from environment 
 ct_token <- NULL
 
@@ -55,7 +72,7 @@ ct_auth <- function(token = NULL, overwrite = FALSE) {
   # immediately. 
   if (is.null(token)) {
     token <- Sys.getenv("CROWDTANGLE_API_TOKEN")
-    if (is.null(token)) stop("No token set")
+    if (token=="") stop("No token set")
   } else {
     # Get on with it. Write key (or ignore if already exists and no overwrite)
     hook_name <- "CROWDTANGLE_API_TOKEN"
@@ -105,9 +122,8 @@ ct_auth <- function(token = NULL, overwrite = FALSE) {
   # Try accessing the API with token; just a blank default query
   endpoint.posts <- "https://api.crowdtangle.com/posts"
   query.string <- paste0(endpoint.posts, "?token=", token)
+  ct_wait(apiWait)
   response.json <- try(fromJSON(query.string), silent = TRUE)
-  # Wait a fraction of a second to stay below the API rate limit
-  if (apiWaitLinks>0) Sys.sleep(apiWaitLinks)
   # Check if query returned OK 
   if (response.json$status==200) {
     # Set global variable to token
@@ -144,7 +160,13 @@ ct_get_links <- function(x = "", platforms = "", count = 100,
   }
   # get on with it!
   endpoint.links <- "https://api.crowdtangle.com/links"
-  query.string <- paste0(endpoint.links, "?link=", x, "&platforms=", platforms, "&count=", count, "&startDate=", startDate, "&endDate=", endDate, "&token=", token)
+  query.string <- paste0(endpoint.links, 
+                         "?link=", x, 
+                         "&platforms=", platforms, 
+                         "&count=", count, 
+                         "&startDate=", startDate, "&endDate=", endDate, 
+                         "&token=", token)
+  ct_wait(apiWaitList)
   response.json <- try(fromJSON(query.string), silent = TRUE)
   if (!class(response.json) == "try-error")
   {
@@ -158,14 +180,7 @@ ct_get_links <- function(x = "", platforms = "", count = 100,
       if("media" %in% colnames(posts)) posts <- select(posts, -media)
       posts <- jsonlite::flatten(posts)
       # Wait a fraction of a second to stay below the API rate limit
-      if (apiWaitLinks>0) Sys.sleep(apiWaitLinks)
       return(posts)
-    }
-    else if (status == 429)
-    # Wait a minute if API rate limit is hit. Kept in for good measure.   
-    {
-      print("API rate limit hit, sleeping...")
-      Sys.sleep(60)
     }
   }
 }
@@ -193,15 +208,23 @@ ct_get_posts <- function(x = "", searchTerm = "",
   }
   # get on with it!
   endpoint.posts <- "https://api.crowdtangle.com/posts"
-  query.string <- paste0(endpoint.posts, "?listIds=", x, "&searchTerm=", searchTerm, "&language=", language, "&types=", types, "&minInteractions=", minInteractions, "&count=", count, "&startDate=", startDate, "&endDate=", endDate, "&token=", token)
+  query.string <- paste0(endpoint.posts, 
+                         "?listIds=", x, 
+                         "&searchTerm=", searchTerm, 
+                         "&language=", language, 
+                         "&types=", types, 
+                         "&minInteractions=", minInteractions, 
+                         "&count=", count, 
+                         "&startDate=", startDate, 
+                         "&endDate=", endDate, 
+                         "&token=", token)
+  ct_wait(apiWait)
   response.json <- try(fromJSON(query.string), silent = TRUE)
   status <- response.json$status
   if (status == 200)
   {
     nextpage <- response.json$result$pagination$nextPage
     posts <- response.json$result$posts %>% select(-expandedLinks, -media) %>% flatten()
-    # Wait a fraction of a second to stay below the API rate limit
-    if (apiWait > 0) Sys.sleep(apiWait)
     return(posts)
   } else { 
     # return error 
@@ -249,18 +272,16 @@ ct_search_posts <- function(x = "", and = "", not = "",
                          "&count=", count, 
                          "&startDate=", startDate, "&endDate=", endDate, 
                          "&token=", token)
+  ct_wait(apiWait)
   response.json <- try(fromJSON(query.string), silent = TRUE)
   status <- response.json$status
   nextpage <- response.json$result$pagination$nextPage
   posts <- response.json$result$posts %>% select(-expandedLinks, -media) %>% flatten()
-  
-  if (apiWait>0) Sys.sleep(apiWait)
-  
   return(posts)
 }
 
 
-# ---- API call: /posts/:id ---- TODO
+# ---- API call: /posts/:id ---- 
 # Retrieves a specific post. There are two versions of this endpoint, depending 
 # upon what you need. Both return the same data. Please note that you must use 
 # a dashboard token that corresponds to the post platform - i.e. an Instagram 
@@ -272,6 +293,131 @@ ct_search_posts <- function(x = "", and = "", not = "",
 # post URLs, Instagram does not expose the IDs in its URLs. You can pull 
 # the necessary Instagram IDs from our API.
 
+ct_get_post_by_id <- function(id = NULL, 
+                         redditAccount = NULL,
+                         includeHistory = FALSE,
+                         token = NULL)
+{
+  # if no token is given, try to retrieve token from environment
+  if (is.null(token)) {
+    # No token given? Try to read it from global variable. 
+    if (is.null(ct_token)) {
+      # Call auth function without parameters - writes API token to 
+      # global variable ct_token and stops if no API token is set
+      ct_auth()
+    }
+    token <- ct_token
+  }
+  # get on with it!
+  # Error check: No valid ID?
+  if (is.null(id)) stop("No ID given")
+  
+  endpoint.posts <- "https://api.crowdtangle.com/post"
+  query.string <- paste0(endpoint.posts, "/",id,
+                         "?",
+                        ifelse(is.null(redditAccount),"",
+                               paste0("redditAccount=",
+                                      redditAccount,"&")),
+                        ifelse(includeHistory,
+                               "includeHistory=1&",""),
+                         "token=", token)
+  ct_wait(apiWait)
+  response.json <- try(fromJSON(query.string), silent = TRUE)
+  status <- response.json$status
+  if (status == 200)
+  {
+    nextpage <- response.json$result$pagination$nextPage
+    posts <- response.json$result$posts %>% select(-expandedLinks, -media) %>% flatten()
+    return(posts)
+  } else { 
+    # return error 
+  }
+}
+
+# Wrapper for Facebook and Instagram posts: Return data for post by link
+# If you call this function in a dplyr pipeline (e.g. with mutate()),
+# use rowwise(). 
+
+ct_get_fb_post <- function (link="",
+                includeHistory = FALSE,
+                token = NULL) {
+  if (link=="") stop("No Link")
+  # Zahl vor dem Wort "post"
+  page_id <- str_extract(link,"[0-9]+(?=\\/posts)")
+  # Zahl am Ende des Links
+  post_id <- str_extract(link,"[0-9]+$")
+  return(ct_get_post_by_id(
+    id = paste0(page_id,"_",post_id),
+    includeHistory = includeHistory,
+    token = token))
+} 
+
+
+# ---- Instagram post query ----
+# This is more than a simple wrapper for ct_get_post_by_id:
+# To query the stats for an Instagram post, you have to grab
+# the post ID from the source code, and the profile page of the source, 
+# and the page ID from that source.
+
+# Source URL: https://www.instagram.com/p/CQ1iXf_tJ37/
+
+# Instagram page id of post can be grabbed from 
+# <meta property="instapp:owner_user_id" content="3173761227" />
+# Instagram post id can be grabbed from 
+# <meta property="al:ios:url" content="instagram://media?id=2609142707615211003" />
+# or calculated from code, using the helper fn InstaToPostID() below.
+
+# Just to keep track of this: if you query 
+# https://www.instagram.com/p/CQ1iXf_tJ37/?__a=1
+# a post is returned as a JSON with all relevant info.
+
+# Helper function to convert the Instagram URL to a post ID, 
+# which you need to query Crowdtangle for a single Insta post. 
+#
+# Makes use of the gmp library which is for handling, like, really big figures.
+# It *does* work if you try to use integers but whether it works correctly
+# may depend on how double and integer are represented on your very system - 
+# max number is 64^10-1. 
+#
+# Are you sure you won't want to use that obscure gmp library?
+
+library(gmp)
+library(stringr)
+b64_str_split <- unlist(
+  strsplit("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",""))
+# 
+instaToPostID <- function(x = "x") {
+  # Function expects either a url, or the isolated code. 
+  # If url, extract. 
+  if (str_detect(x,"instagram\\.com")) {
+    # Extract instagram.com/p/ as well as instagram.com/tv/
+    x <- str_extract(x,"(?<=instagram\\.com\\/p\\/)[a-zA-Z0-9_\\-]+|(?<=instagram\\.com\\/tv\\/)[a-zA-Z0-9_\\-]+")
+    if (is.na(x)) stop("Could not extract URL ID code")
+  }
+  # convert input string to vector of integers
+  t <- unlist(strsplit(x,""))
+  lt <- length(t)
+  r = as.bigz(0L)
+  for (i in 1:lt) {
+    r <- r+((which(b64_str_split==t[i])-1)*as.bigz(64)^(lt-i))
+  }
+  return(as.character(r))
+}
+
+
+ct_get_insta_post <- function (link="",
+                            includeHistory = FALSE,
+                            token = NULL) {
+  if (link=="") stop("No Link")
+  # Zahl vor dem Wort "post"
+  page_id <- str_extract(link,"[0-9]+(?=\\/posts)")
+  # Zahl am Ende des Links
+  post_id <- str_extract(link,"[0-9]+$")
+  return(ct_get_post_by_id(
+    id = paste0(page_id,"_",post_id),
+    includeHistory = includeHistory,
+    token = token))
+} 
 
 
 # ---- API call: /posts/search ---- TODO
@@ -298,3 +444,7 @@ ct_search_posts <- function(x = "", and = "", not = "",
 # Retrieve the accounts for a given list. Accounts may only be retrieved for 
 # lists of type LIST, as saved searches and saved posts do not have 
 # associated accounts.
+
+# ---- API call: /ctpost/:id ---- TODO
+# Gives data on Crowdtangle post - only glimpsed from the demo json file at
+# https://ct-staticfiles.s3-us-west-1.amazonaws.com/api/API-Demo-2020.postman_collection.json
